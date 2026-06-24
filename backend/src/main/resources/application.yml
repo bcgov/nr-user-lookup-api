@@ -41,7 +41,6 @@ bceid:
     url: ${BCEID_WEB_SERVICE_URL:}
     online-service-id: ${BCEID_WEB_SERVICE_OSID:}
     # Internal (IDIR) service-identity GUID used as the requester on every
-    # outbound lookup. Server-side only; never supplied by callers.
     requester-user-guid: ${BCEID_WEB_SERVICE_REQUESTER_USER_GUID:}
     username: ${BCEID_WEB_SERVICE_USERNAME:}
     password: ${BCEID_WEB_SERVICE_PASSWORD:}
