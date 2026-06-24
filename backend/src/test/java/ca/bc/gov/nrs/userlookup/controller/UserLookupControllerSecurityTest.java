@@ -23,7 +23,13 @@ import org.springframework.test.web.servlet.MockMvc;
  * endpoints. The {@link UserLookupService} (and the SOAP call beneath it)
  * is mocked so the tests exercise only the web/security layer.
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+    // issuer-uri has no default in application.yml; supply dummy OAuth2 config so the
+    // context loads. The JwtDecoder is lazy (no network) and tests use the jwt()
+    // post-processor, so these values are never dereferenced.
+    "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://localhost/auth/realms/test",
+    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://localhost/auth/realms/test/protocol/openid-connect/certs"
+})
 @AutoConfigureMockMvc
 class UserLookupControllerSecurityTest {
 
