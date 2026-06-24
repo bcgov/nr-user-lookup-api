@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: user-lookup-api
+  # Validate Keycloak-issued JWT bearer tokens. Setting both issuer-uri and
+  # jwk-set-uri makes Spring Boot build a NimbusJwtDecoder from the JWKS
+  # (RS256 signature validation) + an issuer validator, without an OIDC
+  # discovery call at startup. Defaults target the BC Gov SSO standard realm.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+          # Derived from issuer-uri; setting it explicitly avoids an OIDC discovery call at startup.
+          jwk-set-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/certs
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  # Honour X-Forwarded-* from the OpenShift route/ingress
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus"
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# BCeID SOAP web service configuration.
+# NOTE: `namespace` for the SOAP payload is compile-time (see
+# client/soap/package-info.java); url, credentials and the SOAPAction prefix
+# are runtime-configurable here. Verify the SOAPAction prefix against the live
+# WSDL — see the README "BCeID SOAP integration" section.
+bceid:
+  web-service:
+    url: ${BCEID_WEB_SERVICE_URL:}
+    online-service-id: ${BCEID_WEB_SERVICE_OSID:}
+    # Internal (IDIR) service-identity GUID used as the requester on every
+    # outbound lookup. Server-side only; never supplied by callers.
+    requester-user-guid: ${BCEID_WEB_SERVICE_REQUESTER_USER_GUID:}
+    username: ${BCEID_WEB_SERVICE_USERNAME:}
+    password: ${BCEID_WEB_SERVICE_PASSWORD:}
+    soap-action-prefix: ${BCEID_WEB_SERVICE_SOAP_ACTION_PREFIX:http://www.bceid.ca/webservices/Client/V10/}
+
+springdoc:
+  swagger-ui:
+    tagsSorter: alpha
+    operationsSorter: alpha
+
+logging:
+  level:
+    ca.bc.gov.nrs.userlookup: ${APP_LOG_LEVEL:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [${spring.application.name}] [%t] %logger{36}:%L - %m%n%wEx"

@@ -1,9 +1,12 @@
 apiVersion: template.openshift.io/v1
 kind: Template
+labels:
+  app: ${NAME}-${ZONE}
+  app.kubernetes.io/part-of: ${NAME}-${ZONE}
 parameters:
   - name: NAME
     description: Module name
-    required: true
+    value: nr-user-lookup-api
   - name: COMPONENT
     description: Component name
     value: backend
@@ -11,40 +14,102 @@ parameters:
     description: Deployment zone, e.g. pr-### or prod
     required: true
   - name: IMAGE_TAG
-    description: Image tag to use
-    required: true
-  - name: REGISTRY
-    description: Container registry to import from
-    value: ghcr.io
-  - name: ORG_NAME
-    description: Organization name
-    value: bcgov
+    description: Image tag; e.g. PR number, latest or prod
+    value: latest
   - name: DOMAIN
     value: apps.silver.devops.gov.bc.ca
+  - name: CPU_REQUEST
+    value: "50m"
+  - name: MEMORY_REQUEST
+    value: "256Mi"
+  - name: CPU_LIMIT
+    value: "500m"
+  - name: MEMORY_LIMIT
+    value: "512Mi"
   - name: MIN_REPLICAS
     description: The minimum amount of replicas for the horizontal pod autoscaler.
     value: "3"
   - name: MAX_REPLICAS
     description: The maximum amount of replicas for the horizontal pod autoscaler.
-    value: "7"
-  - name: CPU_REQUEST
-    value: "100m"
-  - name: MEMORY_REQUEST
-    value: "128Mi"
-  - name: MEMORY_LIMIT
-    description: Memory limit for the container (bounds the pod's working set).
-    value: "4Gi"
-  - name: LOG_LEVEL
-    description: Application log level (debug|info|warn|error)
-    value: "info"
+    value: "5"
+  - name: REGISTRY
+    description: Container registry to import from (internal is image-registry.openshift-image-registry.svc:5000)
+    value: ghcr.io
+  - name: ORG
+    description: Organization name, e.g. bcgov
+    value: bcgov
+  - name: KEYCLOAK_ISSUER_URI
+    description: Keycloak realm issuer URI used to validate bearer tokens (the JWKS URI is derived from it)
+    required: true
+  - name: BCEID_WEB_SERVICE_URL
+    description: The url of the BCeID web service
+    required: true
+  - name: BCEID_WEB_SERVICE_OSID
+    description: The online service id (OSID) of the BCeID web service
+    required: true
+  - name: BCEID_WEB_SERVICE_REQUESTER_USER_GUID
+    description: Internal IDIR service-identity GUID used as the requester on every lookup
+    required: true
+  - name: BCEID_WEB_SERVICE_USERNAME
+    description: The username of the BCeID web service
+    required: true
+  - name: BCEID_WEB_SERVICE_PASSWORD
+    description: The password of the BCeID web service
+    required: true
+  - name: APP_LOG_LEVEL
+    description: Application log level
+    value: INFO
+  - name: RANDOM_EXPRESSION
+    description: Random expression to make sure deployments update
+    from: "[a-zA-Z0-9]{32}"
+    generate: expression
 objects:
-  - apiVersion: apps/v1
-    kind: Deployment
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: ${NAME}-${ZONE}-${COMPONENT}
+      labels:
+        app: ${NAME}-${ZONE}
+    stringData:
+      bceid-web-service-osid: "${BCEID_WEB_SERVICE_OSID}"
+      bceid-web-service-requester-user-guid: "${BCEID_WEB_SERVICE_REQUESTER_USER_GUID}"
+      bceid-web-service-password: "${BCEID_WEB_SERVICE_PASSWORD}"
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: allow-from-openshift-ingress
+      labels:
+        template: openshift-test
+    spec:
+      podSelector: {}
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  network.openshift.io/policy-group: ingress
+      policyTypes:
+        - Ingress
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: allow-same-namespace
+      labels:
+        template: quickstart-network-security-policy
+    spec:
+      podSelector: {}
+      ingress:
+        - from:
+            - podSelector: {}
+      policyTypes:
+        - Ingress
+  - kind: Deployment
+    apiVersion: apps/v1
     metadata:
       labels:
         app: ${NAME}-${ZONE}
       name: ${NAME}-${ZONE}-${COMPONENT}
     spec:
+      replicas: ${{MIN_REPLICAS}}
       selector:
         matchLabels:
           deployment: ${NAME}-${ZONE}-${COMPONENT}
@@ -56,158 +121,72 @@ objects:
             app: ${NAME}-${ZONE}
             deployment: ${NAME}-${ZONE}-${COMPONENT}
         spec:
-          terminationGracePeriodSeconds: 30
-          affinity:
-            podAntiAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  podAffinityTerm:
-                    labelSelector:
-                      matchLabels:
-                        deployment: ${NAME}-${ZONE}-${COMPONENT}
-                    topologyKey: kubernetes.io/hostname
-          initContainers:
-            - name: wait-for-db
-              image: ${REGISTRY}/${ORG_NAME}/${NAME}/migrations:${IMAGE_TAG}
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  echo "Waiting for database to be reachable..."
-                  max_retries=30
-                  attempt=1
-                  until nc -z -v -w3 ${NAME}-${ZONE}-database 5432; do
-                    if [ "$attempt" -ge "$max_retries" ]; then
-                      echo "ERROR: Database ${NAME}-${ZONE}-database:5432 is not reachable after ${max_retries} attempts." >&2
-                      exit 1
-                    fi
-                    echo "Database not ready (attempt ${attempt}/${max_retries}), sleeping..."
-                    attempt=$((attempt + 1))
-                    sleep 2
-                  done
-                  echo "Database is UP!"
-              securityContext:
-                allowPrivilegeEscalation: false
-                runAsNonRoot: true
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop: ["ALL"]
-                seccompProfile:
-                  type: RuntimeDefault
-              volumeMounts:
-                - name: tmp
-                  mountPath: /tmp
-            - name: migrations
-              image: ${REGISTRY}/${ORG_NAME}/${NAME}/migrations:${IMAGE_TAG}
-              imagePullPolicy: Always
-              env:
-                - name: POSTGRES_DATABASE
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-name
-                - name: FLYWAY_URL
-                  value: jdbc:postgresql://${NAME}-${ZONE}-database:5432/$(POSTGRES_DATABASE)
-                - name: FLYWAY_USER
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-user
-                - name: FLYWAY_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-password
-                - name: FLYWAY_DEFAULT_SCHEMA
-                  value: "users"
-                - name: FLYWAY_BASELINE_ON_MIGRATE
-                  value: "true"
-              resources:
-                requests:
-                  cpu: 10m
-                  memory: 50Mi
-              securityContext:
-                allowPrivilegeEscalation: false
-                runAsNonRoot: true
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop: ["ALL"]
-                seccompProfile:
-                  type: RuntimeDefault
-              volumeMounts:
-                - name: tmp
-                  mountPath: /tmp
+          automountServiceAccountToken: false
           containers:
-            - name: ${NAME}
-              image: ${REGISTRY}/${ORG_NAME}/${NAME}/${COMPONENT}:${IMAGE_TAG}
+            - image: ${REGISTRY}/${ORG}/${NAME}/${COMPONENT}:${IMAGE_TAG}
               imagePullPolicy: Always
-              ports:
-                - name: http
-                  containerPort: 3000
+              name: ${NAME}
               env:
-                - name: LOG_LEVEL
-                  value: ${LOG_LEVEL}
-                - name: POSTGRES_HOST
-                  value: ${NAME}-${ZONE}-database
-                - name: POSTGRES_PORT
-                  value: "5432"
-                - name: POSTGRES_DATABASE
+                - name: KEYCLOAK_ISSUER_URI
+                  value: ${KEYCLOAK_ISSUER_URI}
+                - name: BCEID_WEB_SERVICE_URL
+                  value: ${BCEID_WEB_SERVICE_URL}
+                - name: BCEID_WEB_SERVICE_OSID
                   valueFrom:
                     secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-name
-                - name: POSTGRES_USER
+                      name: ${NAME}-${ZONE}-${COMPONENT}
+                      key: bceid-web-service-osid
+                - name: BCEID_WEB_SERVICE_REQUESTER_USER_GUID
                   valueFrom:
                     secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-user
-                - name: POSTGRES_PASSWORD
+                      name: ${NAME}-${ZONE}-${COMPONENT}
+                      key: bceid-web-service-requester-user-guid
+                - name: BCEID_WEB_SERVICE_USERNAME
+                  value: ${BCEID_WEB_SERVICE_USERNAME}
+                - name: BCEID_WEB_SERVICE_PASSWORD
                   valueFrom:
                     secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-password
-                - name: POSTGRES_SCHEMA
-                  value: "users"
+                      name: ${NAME}-${ZONE}-${COMPONENT}
+                      key: bceid-web-service-password
+                - name: APP_LOG_LEVEL
+                  value: ${APP_LOG_LEVEL}
+                - name: RANDOM_EXPRESSION
+                  value: ${RANDOM_EXPRESSION}
+              ports:
+                - containerPort: 8080
+                  protocol: TCP
               resources:
                 requests:
                   cpu: ${CPU_REQUEST}
                   memory: ${MEMORY_REQUEST}
                 limits:
+                  cpu: ${CPU_LIMIT}
                   memory: ${MEMORY_LIMIT}
+              readinessProbe:
+                httpGet:
+                  path: /actuator/health
+                  port: 8080
+                  scheme: HTTP
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                timeoutSeconds: 5
+                successThreshold: 1
+                failureThreshold: 30
+              livenessProbe:
+                httpGet:
+                  path: /actuator/health
+                  port: 8080
+                  scheme: HTTP
+                initialDelaySeconds: 90
+                periodSeconds: 30
+                timeoutSeconds: 5
+                successThreshold: 1
+                failureThreshold: 5
               securityContext:
                 allowPrivilegeEscalation: false
                 runAsNonRoot: true
-                readOnlyRootFilesystem: true
                 capabilities:
                   drop: ["ALL"]
-                seccompProfile:
-                  type: RuntimeDefault
-              volumeMounts:
-                - name: tmp
-                  mountPath: /tmp
-              startupProbe:
-                httpGet:
-                  path: /api/health
-                  port: http
-                periodSeconds: 5
-                failureThreshold: 30
-              readinessProbe:
-                httpGet:
-                  path: /api/health
-                  port: http
-                periodSeconds: 5
-                failureThreshold: 3
-              livenessProbe:
-                httpGet:
-                  path: /api
-                  port: http
-                periodSeconds: 10
-                failureThreshold: 3
-          volumes:
-            - name: tmp
-              emptyDir:
-                medium: Memory
-                sizeLimit: 256Mi
   - apiVersion: v1
     kind: Service
     metadata:
@@ -216,16 +195,32 @@ objects:
       name: ${NAME}-${ZONE}-${COMPONENT}
     spec:
       ports:
-        - name: http
+        - name: 8080-tcp
+          protocol: TCP
           port: 80
-          targetPort: 3000
+          targetPort: 8080
       selector:
         deployment: ${NAME}-${ZONE}-${COMPONENT}
-  - apiVersion: autoscaling/v2
-    kind: HorizontalPodAutoscaler
+  - apiVersion: route.openshift.io/v1
+    kind: Route
     metadata:
       labels:
         app: ${NAME}-${ZONE}
+      name: ${NAME}-${ZONE}-${COMPONENT}
+    spec:
+      host: ${NAME}-${ZONE}-${COMPONENT}.${DOMAIN}
+      port:
+        targetPort: 8080-tcp
+      to:
+        kind: Service
+        name: ${NAME}-${ZONE}-${COMPONENT}
+        weight: 100
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+  - apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
       name: ${NAME}-${ZONE}-${COMPONENT}
     spec:
       scaleTargetRef:
@@ -240,30 +235,4 @@ objects:
             name: cpu
             target:
               type: Utilization
-              averageUtilization: 80
-      behavior:
-        scaleUp:
-          stabilizationWindowSeconds: 30
-          policies:
-            - type: Percent
-              value: 100
-              periodSeconds: 60
-          selectPolicy: Max
-        scaleDown:
-          stabilizationWindowSeconds: 300
-          policies:
-            - type: Percent
-              value: 50
-              periodSeconds: 60
-          selectPolicy: Max
-  - apiVersion: policy/v1
-    kind: PodDisruptionBudget
-    metadata:
-      labels:
-        app: ${NAME}-${ZONE}
-      name: ${NAME}-${ZONE}-${COMPONENT}
-    spec:
-      maxUnavailable: 1
-      selector:
-        matchLabels:
-          deployment: ${NAME}-${ZONE}-${COMPONENT}
+              averageUtilization: 100

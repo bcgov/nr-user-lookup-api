@@ -10,15 +10,6 @@ CONTRIBUTING*
 LICENSE*
 SECURITY*
 
-# Node exclusions
-dist
-node_modules
-
-# App-specific exclusions
-coverage
-cypress
-e2e
-migrations
-output
-test
-tests
+# Java/Maven exclusions
+target
+!.mvn/wrapper/maven-wrapper.jar
