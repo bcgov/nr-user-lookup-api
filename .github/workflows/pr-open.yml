@@ -33,6 +33,8 @@ jobs:
   deploys:
     name: Deploys (${{ github.event.number }})
     needs: [builds]
+    permissions:
+      contents: read
     uses: ./.github/workflows/reusable-deploy.yml
     secrets:
       oc_namespace: ${{ secrets.oc_namespace }}
