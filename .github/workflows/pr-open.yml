@@ -33,6 +33,8 @@ jobs:
   deploys:
     name: Deploys (${{ github.event.number }})
     needs: [builds]
+    permissions:
+      contents: read
     uses: ./.github/workflows/reusable-deploy.yml
     secrets:
       oc_namespace: ${{ secrets.oc_namespace }}
@@ -41,6 +43,8 @@ jobs:
       bceid_web_service_requester_user_guid: ${{ secrets.bceid_web_service_requester_user_guid }}
       bceid_web_service_username: ${{ secrets.bceid_web_service_username }}
       bceid_web_service_password: ${{ secrets.bceid_web_service_password }}
+      keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
+      keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
     with:
       target: ${{ github.event.number }}
       triggers: ('backend/', '.github/workflows/')

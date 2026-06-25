@@ -51,7 +51,7 @@ class UserLookupControllerSecurityTest {
     when(userLookupService.searchIdirUsers(any())).thenReturn(new SearchIdirUsersResponse());
 
     mockMvc.perform(post(SEARCH_URL)
-            .with(jwt().authorities(scope("IDIR_SEARCH")))
+            .with(jwt().authorities(scope("user-lookup:idir:search")))
             .param("firstName", "John"))
         .andExpect(status().isOk());
   }
@@ -66,7 +66,7 @@ class UserLookupControllerSecurityTest {
   @Test
   void searchWithWrongScopeReturns403() throws Exception {
     mockMvc.perform(post(SEARCH_URL)
-            .with(jwt().authorities(scope("IDIR_READ")))
+            .with(jwt().authorities(scope("user-lookup:idir:read")))
             .param("firstName", "John"))
         .andExpect(status().isForbidden());
   }
@@ -74,7 +74,7 @@ class UserLookupControllerSecurityTest {
   @Test
   void searchWithNoSearchFieldReturns400() throws Exception {
     mockMvc.perform(post(SEARCH_URL)
-            .with(jwt().authorities(scope("IDIR_SEARCH"))))
+            .with(jwt().authorities(scope("user-lookup:idir:search"))))
         .andExpect(status().isBadRequest());
   }
 
@@ -83,7 +83,7 @@ class UserLookupControllerSecurityTest {
     when(userLookupService.verifyIdirUserByAccountDetail(any())).thenReturn(new IdirUserResponse());
 
     mockMvc.perform(get(DETAIL_URL)
-            .with(jwt().authorities(scope("IDIR_READ")))
+            .with(jwt().authorities(scope("user-lookup:idir:read")))
             .param("userId", "jdoe"))
         .andExpect(status().isOk());
   }
@@ -91,7 +91,7 @@ class UserLookupControllerSecurityTest {
   @Test
   void accountDetailWithWrongScopeReturns403() throws Exception {
     mockMvc.perform(get(DETAIL_URL)
-            .with(jwt().authorities(scope("BCEID_READ")))
+            .with(jwt().authorities(scope("user-lookup:business-bceid:read")))
             .param("userId", "jdoe"))
         .andExpect(status().isForbidden());
   }
