@@ -67,7 +67,7 @@ objects:
   - apiVersion: v1
     kind: Secret
     metadata:
-      name: ${NAME}-${ZONE}-${COMPONENT}
+      name: ${NAME}-${ZONE}
       labels:
         app: ${NAME}-${ZONE}
     stringData:
@@ -107,19 +107,19 @@ objects:
     metadata:
       labels:
         app: ${NAME}-${ZONE}
-      name: ${NAME}-${ZONE}-${COMPONENT}
+      name: ${NAME}-${ZONE}
     spec:
       replicas: ${{MIN_REPLICAS}}
       selector:
         matchLabels:
-          deployment: ${NAME}-${ZONE}-${COMPONENT}
+          deployment: ${NAME}-${ZONE}
       strategy:
         type: RollingUpdate
       template:
         metadata:
           labels:
             app: ${NAME}-${ZONE}
-            deployment: ${NAME}-${ZONE}-${COMPONENT}
+            deployment: ${NAME}-${ZONE}
         spec:
           automountServiceAccountToken: false
           containers:
@@ -134,19 +134,19 @@ objects:
                 - name: BCEID_WEB_SERVICE_OSID
                   valueFrom:
                     secretKeyRef:
-                      name: ${NAME}-${ZONE}-${COMPONENT}
+                      name: ${NAME}-${ZONE}
                       key: bceid-web-service-osid
                 - name: BCEID_WEB_SERVICE_REQUESTER_USER_GUID
                   valueFrom:
                     secretKeyRef:
-                      name: ${NAME}-${ZONE}-${COMPONENT}
+                      name: ${NAME}-${ZONE}
                       key: bceid-web-service-requester-user-guid
                 - name: BCEID_WEB_SERVICE_USERNAME
                   value: ${BCEID_WEB_SERVICE_USERNAME}
                 - name: BCEID_WEB_SERVICE_PASSWORD
                   valueFrom:
                     secretKeyRef:
-                      name: ${NAME}-${ZONE}-${COMPONENT}
+                      name: ${NAME}-${ZONE}
                       key: bceid-web-service-password
                 - name: APP_LOG_LEVEL
                   value: ${APP_LOG_LEVEL}
@@ -192,7 +192,7 @@ objects:
     metadata:
       labels:
         app: ${NAME}-${ZONE}
-      name: ${NAME}-${ZONE}-${COMPONENT}
+      name: ${NAME}-${ZONE}
     spec:
       ports:
         - name: 8080-tcp
@@ -200,7 +200,7 @@ objects:
           port: 80
           targetPort: 8080
       selector:
-        deployment: ${NAME}-${ZONE}-${COMPONENT}
+        deployment: ${NAME}-${ZONE}
   - apiVersion: route.openshift.io/v1
     kind: Route
     metadata:
@@ -213,7 +213,7 @@ objects:
         targetPort: 8080-tcp
       to:
         kind: Service
-        name: ${NAME}-${ZONE}-${COMPONENT}
+        name: ${NAME}-${ZONE}
         weight: 100
       tls:
         termination: edge
@@ -221,12 +221,12 @@ objects:
   - apiVersion: autoscaling/v2
     kind: HorizontalPodAutoscaler
     metadata:
-      name: ${NAME}-${ZONE}-${COMPONENT}
+      name: ${NAME}-${ZONE}
     spec:
       scaleTargetRef:
         apiVersion: apps/v1
         kind: Deployment
-        name: ${NAME}-${ZONE}-${COMPONENT}
+        name: ${NAME}-${ZONE}
       minReplicas: ${{MIN_REPLICAS}}
       maxReplicas: ${{MAX_REPLICAS}}
       metrics:
