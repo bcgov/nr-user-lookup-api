@@ -40,6 +40,12 @@ on:
       bceid_web_service_password:
         description: BCeID web service Basic auth password
         required: true
+      keycloak_sa_client_id:
+        description: Keycloak service-account client id used to sync client scopes
+        required: false
+      keycloak_sa_client_secret:
+        description: Keycloak service-account client secret (needs realm-management 'manage-clients') for syncing client scopes
+        required: false
 
     outputs:
       triggered:
@@ -54,9 +60,26 @@ jobs:
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+    # Surfaced as job env so the step's `if:` can gate on it — the `secrets`
+    # context isn't available in step `if:` conditions, but `env` is.
+    env:
+      KC_SA_CLIENT_ID: ${{ secrets.keycloak_sa_client_id }}
     outputs:
       triggered: ${{ steps.deploy.outputs.triggered }}
     steps:
+      - uses: actions/checkout@v6
+
+      # Idempotently create the API's OAuth2 client scopes in this environment's
+      # Keycloak realm. Skipped unless the service-account client id is configured.
+      - name: Ensure Keycloak client scopes
+        if: ${{ env.KC_SA_CLIENT_ID != '' }}
+        env:
+          KEYCLOAK_ISSUER_URI: ${{ vars.KEYCLOAK_ISSUER_URI }}
+          KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret }}
+        run: ./.github/scripts/ensure-keycloak-scopes.sh
+
       - uses: bcgov/action-deployer-openshift@fc51e6a5849eb0fdb9395ceed9c1059aa25b3815 # v4.1.1
         id: deploy
         with:

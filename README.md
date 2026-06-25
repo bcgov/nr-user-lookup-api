@@ -21,9 +21,9 @@ dialog) are at `/swagger-ui/index.html`.
 
 | Method | Path | Required scope | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/user-lookup/idir-users/search` | `IDIR_SEARCH` | Search IDIR users by firstName / lastName / userId (partial match). |
-| `GET`  | `/api/v1/user-lookup/idir-account-detail` | `IDIR_READ` | Get an IDIR user by exact `userId`. |
-| `GET`  | `/api/v1/user-lookup/businessBceid` | `BUSINESS_BCEID_READ` | Get a BCeID business user by exact `userId` or `userGuid`. |
+| `POST` | `/api/v1/user-lookup/idir-users/search` | `user-lookup:idir:search` | Search IDIR users by firstName / lastName / userId (partial match). |
+| `GET`  | `/api/v1/user-lookup/idir-account-detail` | `user-lookup:idir:read` | Get an IDIR user by exact `userId`. |
+| `GET`  | `/api/v1/user-lookup/businessBceid` | `user-lookup:business-bceid:read` | Get a BCeID business user by exact `userId` or `userGuid`. |
 
 The `POST .../idir-users/search` takes its search criteria as query parameters (`firstName`,
 `lastName`, `userId`, the optional `*MatchMode` values of `Exact`/`Contains`/`StartsWith`, and
@@ -34,9 +34,11 @@ The requester identity (`requesterUserGuid`) is a fixed, internal server-side co
 value (`BCEID_WEB_SERVICE_REQUESTER_USER_GUID`) used as an Internal/IDIR requester on every
 outbound lookup — it is **not** accepted from callers.
 
-Scopes map to the JWT `scope` claim via Spring's default `SCOPE_*` authority conversion; the
-custom scopes (`IDIR_SEARCH`, `IDIR_READ`, `BUSINESS_BCEID_READ`) must be configured as client
-scopes on the Keycloak integration and assigned to the calling client.
+Scopes map to the JWT `scope` claim via Spring's default `SCOPE_*` authority conversion. The
+custom scopes (`user-lookup:idir:search`, `user-lookup:idir:read`,
+`user-lookup:business-bceid:read`) are **created automatically in each environment's Keycloak
+realm during deploy** (see [Deployment](#deployment)); they still need to be **assigned to each
+calling client** (as default or optional client scopes) for tokens to carry them.
 
 New API versions go under a new path prefix (`/api/v2/...`) backed by a parallel
 `controller.v2` package, leaving `v1` clients untouched.
@@ -110,6 +112,20 @@ The deploy workflow expects these repository **variables** — `KEYCLOAK_ISSUER_
 `BCEID_WEB_SERVICE_URL`, `oc_server` — and **secrets** — `oc_namespace`, `oc_token`,
 `bceid_web_service_osid`, `bceid_web_service_requester_user_guid`,
 `bceid_web_service_username`, `bceid_web_service_password`.
+
+### Keycloak scope provisioning
+
+During deploy, `.github/scripts/ensure-keycloak-scopes.sh` idempotently creates this API's
+client scopes in the target realm (derived from `KEYCLOAK_ISSUER_URI`) — existing scopes are
+left untouched. It's **opt-in**: the step runs only when the secret `keycloak_sa_client_id`
+is set, authenticating with a confidential service-account client via `client_credentials`.
+
+- **secret** `keycloak_sa_client_id` — the service-account client id
+- **secret** `keycloak_sa_client_secret` — its client secret
+
+The service-account client must hold the realm-management **`manage-clients`** role. Set these
+per environment alongside the other deploy values (see the environment note above) so each
+realm gets its own service account.
 
 ## Tech stack
 
