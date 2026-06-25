@@ -8,8 +8,8 @@ parameters:
     description: Module name
     value: nr-user-lookup-api
   - name: COMPONENT
-    description: Component name
-    value: backend
+    description: Image/package name (publishes & pulls ghcr.io/${ORG}/${NAME}/${COMPONENT})
+    value: api
   - name: ZONE
     description: Deployment zone, e.g. pr-### or prod
     required: true
