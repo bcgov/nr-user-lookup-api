@@ -82,6 +82,18 @@ jobs:
 
       - uses: bcgov/action-deployer-openshift@fc51e6a5849eb0fdb9395ceed9c1059aa25b3815 # v4.1.1
         id: deploy
+        # The BCeID secrets are handed to the deployer through the environment and
+        # referenced below as `$VAR`, NOT interpolated as `${{ secrets.* }}`. The
+        # action expands the `parameters` string in a shell
+        # (`oc process ... ${{ inputs.parameters }}`); pasting a secret in literally
+        # variable expansion. Passing `$VAR` makes the action's shell expand the env
+        # var verbatim — bash never re-expands the result — and `oc process`
+        # substitutes parameter values without re-scanning them.
+        env:
+          BCEID_WEB_SERVICE_OSID: ${{ secrets.bceid_web_service_osid }}
+          BCEID_WEB_SERVICE_REQUESTER_USER_GUID: ${{ secrets.bceid_web_service_requester_user_guid }}
+          BCEID_WEB_SERVICE_USERNAME: ${{ secrets.bceid_web_service_username }}
+          BCEID_WEB_SERVICE_PASSWORD: ${{ secrets.bceid_web_service_password }}
         with:
           file: backend/openshift.deploy.yml
           oc_namespace: ${{ secrets.oc_namespace }}
@@ -95,8 +107,8 @@ jobs:
             -p IMAGE_TAG="${{ inputs.tag }}"
             -p KEYCLOAK_ISSUER_URI="${{ vars.KEYCLOAK_ISSUER_URI }}"
             -p BCEID_WEB_SERVICE_URL="${{ vars.BCEID_WEB_SERVICE_URL }}"
-            -p BCEID_WEB_SERVICE_OSID="${{ secrets.bceid_web_service_osid }}"
-            -p BCEID_WEB_SERVICE_REQUESTER_USER_GUID="${{ secrets.bceid_web_service_requester_user_guid }}"
-            -p BCEID_WEB_SERVICE_USERNAME="${{ secrets.bceid_web_service_username }}"
-            -p BCEID_WEB_SERVICE_PASSWORD="${{ secrets.bceid_web_service_password }}"
+            -p BCEID_WEB_SERVICE_OSID="$BCEID_WEB_SERVICE_OSID"
+            -p BCEID_WEB_SERVICE_REQUESTER_USER_GUID="$BCEID_WEB_SERVICE_REQUESTER_USER_GUID"
+            -p BCEID_WEB_SERVICE_USERNAME="$BCEID_WEB_SERVICE_USERNAME"
+            -p BCEID_WEB_SERVICE_PASSWORD="$BCEID_WEB_SERVICE_PASSWORD"
           triggers: ${{ inputs.triggers }}
