@@ -16,8 +16,8 @@ and BCeID business users. It is the Spring Boot successor to the former Node loo
 ## Endpoints
 
 The API is versioned in the path. All endpoints are under `/api/v1/user-lookup` and
-require a bearer token carrying the listed scope. Interactive docs (with an "Authorize"
-dialog) are at `/swagger-ui/index.html`.
+require a bearer token carrying the listed scope. Interactive docs are at
+`/swagger-ui/index.html` (see [API docs](#api-docs-openapi--swagger)).
 
 | Method | Path | Required scope | Description |
 |---|---|---|---|
@@ -38,10 +38,89 @@ Scopes map to the JWT `scope` claim via Spring's default `SCOPE_*` authority con
 custom scopes (`user-lookup:idir:search`, `user-lookup:idir:read`,
 `user-lookup:business-bceid:read`) are **created automatically in each environment's Keycloak
 realm during deploy** (see [Deployment](#deployment)); they still need to be **assigned to each
-calling client** (as default or optional client scopes) for tokens to carry them.
+calling client** for tokens to carry them — see
+[Consuming the API](#consuming-the-api--provision-your-own-keycloak-client).
 
 New API versions go under a new path prefix (`/api/v2/...`) backed by a parallel
 `controller.v2` package, leaving `v1` clients untouched.
+
+## API docs (OpenAPI / Swagger)
+
+springdoc is enabled and both docs endpoints are **public** (no token needed to read them):
+
+| What | Path |
+|---|---|
+| Swagger UI | `/swagger-ui/index.html` |
+| OpenAPI JSON | `/v3/api-docs` |
+
+The UI has an **Authorize** dialog wired to a bearer-token scheme — paste a Keycloak
+access token (no `Bearer ` prefix) to try the endpoints. Locally:
+<http://localhost:8080/swagger-ui/index.html>.
+
+## Consuming the API — provision your own Keycloak client
+
+This service does **not** hand out credentials. Each consuming team registers its own
+confidential client in the same Keycloak realm as this API (the realm behind
+`KEYCLOAK_ISSUER_URI`, e.g. `standard` on `*.loginproxy.gov.bc.ca`) and calls with a
+`client_credentials` token.
+
+**Division of ownership:** this repo creates the *client scopes* in each realm at deploy
+time (see [Keycloak scope provisioning](#keycloak-scope-provisioning)). Assigning them to
+*your* client is yours to do — we never touch consumer clients.
+
+1. **Create a confidential service-account client** in the realm (via the BC Gov
+   Keycloak/loginproxy request process, or your own CI if you hold an admin service
+   account with the realm-management `manage-clients` role). Settings:
+   - `publicClient: false`, `serviceAccountsEnabled: true`
+   - `standardFlowEnabled: false`, `directAccessGrantsEnabled: false`,
+     `implicitFlowEnabled: false` — machine-to-machine only, no browser flows.
+2. **Assign the scopes you need** as **default** client scopes (not *optional*), so every
+   `client_credentials` token carries them without your code asking for them explicitly.
+   Request only the endpoints you actually call:
+   - `user-lookup:idir:search` — IDIR user search
+   - `user-lookup:idir:read` — IDIR account detail
+   - `user-lookup:business-bceid:read` — Business BCeID account detail
+
+   The scopes must already exist in that realm — if one is missing, this API hasn't been
+   deployed to that environment yet (or its scope-provisioning step was skipped).
+3. **Mint a token** against the realm token endpoint and send it as a bearer token:
+
+   ```bash
+   TOKEN=$(curl -sS -X POST \
+     "https://dev.loginproxy.gov.bc.ca/auth/realms/standard/protocol/openid-connect/token" \
+     -d grant_type=client_credentials \
+     -d client_id="$YOUR_CLIENT_ID" \
+     --data-urlencode "client_secret=$YOUR_CLIENT_SECRET" | jq -r .access_token)
+
+   curl -sS -H "Authorization: Bearer $TOKEN" \
+     "$USER_LOOKUP_BASE_URL/api/v1/user-lookup/idir-account-detail?userId=JSMITH"
+   ```
+
+   Tokens are short-lived — cache and refresh shortly before expiry rather than fetching
+   one per request. Missing/expired token → **401**; valid token without the endpoint's
+   scope → **403**.
+
+Notes for consumers:
+
+- **Don't forward your end user's token.** This is a service-to-service API; the outbound
+  BCeID requester identity is fixed server-side. Call it with your app's own service-account
+  token and apply your own authorization to the end user first.
+- **One client per app per environment** (dev/test/prod are separate realms/secrets).
+- Keep the client secret in a secret store (OpenShift `Secret`, GitHub Actions secret) —
+  never in the image or repo.
+
+### Reference implementation
+
+`bcgov/nr-fsp-new` consumes this API and automates the above in CI:
+
+- `.github/scripts/ensure-keycloak-service-account.sh` — idempotently creates its
+  `nr-fsp-backend` client, assigns the three scopes as default client scopes, and emits the
+  client id/secret as masked step outputs for the deploy.
+- `backend/src/main/java/ca/bc/gov/nrs/fsp/api/client/ClientCredentialsTokenSource.java` —
+  a small token source that caches the access token and refreshes ~60s before expiry.
+- Config surface: `USER_LOOKUP_BASE_URL`, `USER_LOOKUP_TOKEN_URL`, `USER_LOOKUP_CLIENT_ID`,
+  `USER_LOOKUP_CLIENT_SECRET` (and an optional `USER_LOOKUP_SCOPE`, unused because the
+  scopes are defaults on the client).
 
 ## Configuration
 
