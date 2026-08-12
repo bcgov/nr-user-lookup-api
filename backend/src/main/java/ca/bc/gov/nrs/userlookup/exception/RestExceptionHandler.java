@@ -39,6 +39,13 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     return new ResponseEntity<>(apiError, apiError.getStatus());
   }
 
+  @ExceptionHandler(InvalidRequestException.class)
+  protected ResponseEntity<Object> handleInvalidRequest(InvalidRequestException ex) {
+    ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST, ex.getMessage());
+    log.info("Invalid request: {}", ex.getMessage());
+    return new ResponseEntity<>(apiError, apiError.getStatus());
+  }
+
   @ExceptionHandler(UpstreamServiceException.class)
   protected ResponseEntity<Object> handleUpstreamService(UpstreamServiceException ex) {
     ApiError apiError = new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());

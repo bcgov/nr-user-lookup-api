@@ -8,9 +8,11 @@ import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.userlookup.client.BceidSoapClient;
 import ca.bc.gov.nrs.userlookup.client.BceidProperties;
+import ca.bc.gov.nrs.userlookup.client.soap.AccountDetailRequest;
 import ca.bc.gov.nrs.userlookup.client.soap.AccountList;
 import ca.bc.gov.nrs.userlookup.client.soap.BceidAccount;
 import ca.bc.gov.nrs.userlookup.client.soap.Contact;
+import ca.bc.gov.nrs.userlookup.client.soap.GetAccountDetailRequest;
 import ca.bc.gov.nrs.userlookup.client.soap.GetAccountDetailResult;
 import ca.bc.gov.nrs.userlookup.client.soap.IndividualIdentity;
 import ca.bc.gov.nrs.userlookup.client.soap.PersonName;
@@ -22,6 +24,7 @@ import ca.bc.gov.nrs.userlookup.dto.IdirUserResponse;
 import ca.bc.gov.nrs.userlookup.dto.SearchIdirUsersQuery;
 import ca.bc.gov.nrs.userlookup.dto.SearchIdirUsersResponse;
 import ca.bc.gov.nrs.userlookup.dto.SearchMatchMode;
+import ca.bc.gov.nrs.userlookup.dto.SearchUserParameterType;
 import ca.bc.gov.nrs.userlookup.exception.UpstreamBusinessException;
 import ca.bc.gov.nrs.userlookup.exception.UpstreamServiceException;
 import java.util.List;
@@ -202,5 +205,93 @@ class UserLookupServiceTest {
     assertThatThrownBy(() -> bare.searchIdirUsers(query))
         .isInstanceOf(UpstreamServiceException.class)
         .hasMessageContaining("not configured");
+  }
+
+  // ------------------------------------------------ IDIR lookup by GUID
+
+  private GetAccountDetailRequest captureAccountDetailRequest() {
+    ArgumentCaptor<GetAccountDetailRequest> captor =
+        ArgumentCaptor.forClass(GetAccountDetailRequest.class);
+    org.mockito.Mockito.verify(soapClient).getAccountDetail(captor.capture());
+    return captor.getValue();
+  }
+
+  @Test
+  void accountDetailByGuidAsksTheDirectoryByGuid() {
+    // The GUID has to travel as userGuid. Sent as userId it would be looked up
+    // as a login name, match nothing, and read as "no such user".
+    GetAccountDetailResult result = new GetAccountDetailResult();
+    result.setCode("Success");
+    result.setAccount(account());
+    when(soapClient.getAccountDetail(any())).thenReturn(result);
+
+    service.verifyIdirUser(SearchUserParameterType.userGuid, "guid1");
+
+    AccountDetailRequest sent = captureAccountDetailRequest().getAccountDetailRequest();
+    assertThat(sent.getUserGuid()).isEqualTo("guid1");
+    assertThat(sent.getUserId()).isNull();
+  }
+
+  @Test
+  void accountDetailByGuidStaysAnInternalLookup() {
+    // Internal is what makes this an IDIR account rather than a Business BCeID
+    // one; the same GUID could exist in either directory.
+    GetAccountDetailResult result = new GetAccountDetailResult();
+    result.setCode("Success");
+    result.setAccount(account());
+    when(soapClient.getAccountDetail(any())).thenReturn(result);
+
+    service.verifyIdirUser(SearchUserParameterType.userGuid, "guid1");
+
+    AccountDetailRequest sent = captureAccountDetailRequest().getAccountDetailRequest();
+    assertThat(sent.getAccountTypeCode()).isEqualTo("Internal");
+    assertThat(sent.getRequesterAccountTypeCode()).isEqualTo("Internal");
+    assertThat(sent.getRequesterUserGuid()).isEqualTo(REQUESTER_GUID);
+  }
+
+  @Test
+  void accountDetailByGuidFoundMapsAccount() {
+    GetAccountDetailResult result = new GetAccountDetailResult();
+    result.setCode("Success");
+    result.setAccount(account());
+    when(soapClient.getAccountDetail(any())).thenReturn(result);
+
+    IdirUserResponse response = service.verifyIdirUser(SearchUserParameterType.userGuid, "guid1");
+
+    assertThat(response.isFound()).isTrue();
+    assertThat(response.getUserId()).isEqualTo("jdoe");
+    assertThat(response.getFirstName()).isEqualTo("John");
+    assertThat(response.getLastName()).isEqualTo("Doe");
+  }
+
+  @Test
+  void accountDetailByGuidNoResultsEchoesTheGuid() {
+    // A caller resolving several GUIDs needs to know which one came back empty.
+    GetAccountDetailResult result = new GetAccountDetailResult();
+    result.setCode("Failed");
+    result.setFailureCode("NoResults");
+    when(soapClient.getAccountDetail(any())).thenReturn(result);
+
+    IdirUserResponse response = service.verifyIdirUser(SearchUserParameterType.userGuid, "guid1");
+
+    assertThat(response.isFound()).isFalse();
+    assertThat(response.getGuid()).isEqualTo("guid1");
+    assertThat(response.getUserId()).isNull();
+  }
+
+  @Test
+  void accountDetailByUserIdStillAsksByUserId() {
+    // The original form has to keep working; it is what every existing caller
+    // sends.
+    GetAccountDetailResult result = new GetAccountDetailResult();
+    result.setCode("Success");
+    result.setAccount(account());
+    when(soapClient.getAccountDetail(any())).thenReturn(result);
+
+    service.verifyIdirUserByAccountDetail("jdoe");
+
+    AccountDetailRequest sent = captureAccountDetailRequest().getAccountDetailRequest();
+    assertThat(sent.getUserId()).isEqualTo("jdoe");
+    assertThat(sent.getUserGuid()).isNull();
   }
 }

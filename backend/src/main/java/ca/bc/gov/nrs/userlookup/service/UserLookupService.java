@@ -66,13 +66,34 @@ public class UserLookupService {
 
   /** Scenario: an IDIR requester looks up an IDIR user by exact userId. */
   public IdirUserResponse verifyIdirUserByAccountDetail(String userId) {
+    return verifyIdirUser(SearchUserParameterType.userId, userId);
+  }
+
+  /**
+   * Scenario: look up an IDIR user by exact userId or userGuid.
+   *
+   * <p>The GUID form exists because a caller does not always hold a userId. A
+   * consumer reading identities out of Keycloak has the GUID and nothing else -
+   * a federated user who has never signed in is stored as {@code <guid>@azureidir}
+   * with no name or email against it - so without this there is no way to turn
+   * that back into a person.
+   *
+   * <p>Both forms are the same SOAP call: {@code AccountDetailRequest} takes
+   * either property, exactly as the Business BCeID lookup already does.
+   */
+  public IdirUserResponse verifyIdirUser(SearchUserParameterType searchUserBy,
+      String searchValue) {
     checkRequiredCredentials();
 
     AccountDetailRequest detail = new AccountDetailRequest();
     detail.setOnlineServiceId(properties.getOnlineServiceId());
     detail.setRequesterAccountTypeCode(RequesterAccountTypeCode.Internal.name());
     detail.setRequesterUserGuid(properties.getRequesterUserGuid());
-    detail.setUserId(userId);
+    if (searchUserBy == SearchUserParameterType.userGuid) {
+      detail.setUserGuid(searchValue);
+    } else {
+      detail.setUserId(searchValue);
+    }
     detail.setAccountTypeCode(RequesterAccountTypeCode.Internal.name());
 
     GetAccountDetailRequest request = new GetAccountDetailRequest();
@@ -83,8 +104,14 @@ public class UserLookupService {
 
     IdirUserResponse response = new IdirUserResponse();
     if (isNoResults(result.getCode(), result.getFailureCode())) {
+      // Echo back whichever identifier was asked about, so the caller can tell
+      // which of a batch of lookups came back empty.
       response.setFound(false);
-      response.setUserId(userId);
+      if (searchUserBy == SearchUserParameterType.userGuid) {
+        response.setGuid(searchValue);
+      } else {
+        response.setUserId(searchValue);
+      }
       return response;
     }
 
