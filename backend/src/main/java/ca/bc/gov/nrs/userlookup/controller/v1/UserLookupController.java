@@ -5,6 +5,7 @@ import ca.bc.gov.nrs.userlookup.dto.IdirUserResponse;
 import ca.bc.gov.nrs.userlookup.dto.SearchIdirUsersQuery;
 import ca.bc.gov.nrs.userlookup.dto.SearchIdirUsersResponse;
 import ca.bc.gov.nrs.userlookup.dto.SearchUserParameterType;
+import ca.bc.gov.nrs.userlookup.exception.InvalidRequestException;
 import ca.bc.gov.nrs.userlookup.security.ApiScopes;
 import ca.bc.gov.nrs.userlookup.service.UserLookupService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,12 +41,39 @@ public class UserLookupController {
 
   private final UserLookupService userLookupService;
 
+  /**
+   * Look up one IDIR account by {@code userId} or {@code userGuid}.
+   *
+   * <p>Both parameters are optional individually and exactly one must be given.
+   * {@code userId} was the only form originally, so it stays optional-but-alone
+   * rather than becoming a {@code searchUserBy}/{@code searchValue} pair like the
+   * Business BCeID endpoint - that would have broken every existing caller for a
+   * cosmetic gain.
+   *
+   * <p>Same {@code idir:read} scope either way: it is the same account detail
+   * from the same source, reached by a different key.
+   */
   @GetMapping("/idir-account-detail")
   @PreAuthorize(ApiScopes.IDIR_READ)
-  @Operation(summary = "Get IDIR user account detail by userId (exact match)")
+  @Operation(summary = "Get IDIR user account detail by userId or userGuid (exact match)",
+      description = "Supply exactly one of userId or userGuid.")
   public IdirUserResponse verifyIdirUserByAccountDetail(
-      @RequestParam("userId") String userId) {
-    return userLookupService.verifyIdirUserByAccountDetail(userId);
+      @RequestParam(value = "userId", required = false) String userId,
+      @RequestParam(value = "userGuid", required = false) String userGuid) {
+
+    boolean hasUserId = StringUtils.hasText(userId);
+    boolean hasUserGuid = StringUtils.hasText(userGuid);
+
+    if (hasUserId == hasUserGuid) {
+      // Both or neither. Rejected rather than resolved by precedence: silently
+      // ignoring one of two identifiers that disagree would answer a question
+      // the caller did not ask.
+      throw new InvalidRequestException("Supply exactly one of userId or userGuid.");
+    }
+
+    return hasUserGuid
+        ? userLookupService.verifyIdirUser(SearchUserParameterType.userGuid, userGuid)
+        : userLookupService.verifyIdirUser(SearchUserParameterType.userId, userId);
   }
 
   @PostMapping("/idir-users/search")
