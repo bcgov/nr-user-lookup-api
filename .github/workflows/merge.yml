@@ -80,6 +80,15 @@ jobs:
   # unset or monitoring/alerts/ is empty — adoption is gradual. Alert
   # templates live in monitoring/alerts/ in this repo; add or remove files
   # there to customize the alert set.
+  #
+  # This repo is backend-only and deploys a single Deployment named
+  # <app>-<zone> (nr-user-lookup-api-prod) — there is no component segment in
+  # the name. So `components` is pinned to one entry (the action defaults to
+  # `frontend,backend`, which would create a phantom frontend alert set), and
+  # the queries in monitoring/alerts/*.json target __APP__-prod directly
+  # rather than the action's usual __APP__-__COMPONENT__-prod. The value below
+  # only shapes the alert names (<app>-backend-<rule>); don't reintroduce
+  # __COMPONENT__ into the queries.
   monitor-prod:
     name: Sysdig Monitor (PROD)
     needs: [deploy-prod]
@@ -95,6 +104,7 @@ jobs:
           sysdig_api_token: ${{ secrets.SYSDIG_API_TOKEN }}
           oc_namespace: ${{ secrets.oc_namespace }}
           app: ${{ github.event.repository.name }}
+          components: backend
 
   promote:
     name: Promote Images
