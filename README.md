@@ -192,6 +192,35 @@ The deploy workflow expects these repository **variables** — `KEYCLOAK_ISSUER_
 `bceid_web_service_osid`, `bceid_web_service_requester_user_guid`,
 `bceid_web_service_username`, `bceid_web_service_password`.
 
+### Environments
+
+| Zone | Host | Deployed by |
+| --- | --- | --- |
+| PR | `nr-user-lookup-api-<pr>.apps.silver.devops.gov.bc.ca` | `pr-open.yml`, on each PR push; torn down by `pr-close.yml` on merge/close |
+| DEV | `nr-user-lookup-api-dev.apps.silver.devops.gov.bc.ca` | `merge.yml`, on every merge to `main` |
+| TEST | `nr-user-lookup-api-test.apps.silver.devops.gov.bc.ca` | `merge.yml`, after DEV's smoke test passes |
+| PROD | `nr-user-lookup-api-prod.apps.silver.devops.gov.bc.ca` | `merge.yml`, after TEST's smoke test passes |
+
+DEV is long-lived and named by zone (not PR number), so the PR-close cleanup — which only
+matches `<repo>-<number>` — leaves it alone. It deploys in **lite mode** (no HPA or PDB, a
+single replica), like PR instances; TEST and PROD run the full replica set.
+
+DEV, TEST and PROD each run under the matching GitHub **environment** (`dev`, `test`, `prod`);
+PR deploys run with no environment. Because the deploy job in `reusable-deploy.yml` sets
+`environment:`, anything defined on that environment — variables *and* secrets — overrides the
+repository-level value that `merge.yml` passes in ([GitHub docs][reuse-secrets]: "the
+environment secret will be used, and not the secret passed from the caller workflow").
+
+So a `dev` environment must exist, and needs only the values that differ from repo level;
+unset names fall back to the repo-level secret or variable:
+
+- variables: `KEYCLOAK_ISSUER_URI`, `BCEID_WEB_SERVICE_URL`, `oc_server`
+- secrets: `oc_namespace`, `oc_token`, `bceid_web_service_osid`,
+  `bceid_web_service_requester_user_guid`, `bceid_web_service_username`,
+  `bceid_web_service_password`, `keycloak_sa_client_id`, `keycloak_sa_client_secret`
+
+[reuse-secrets]: https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows
+
 ### Keycloak scope provisioning
 
 During deploy, `.github/scripts/ensure-keycloak-scopes.sh` idempotently creates this API's

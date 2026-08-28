@@ -51,6 +51,7 @@ jobs:
     with:
       target: ${{ github.event.number }}
       triggers: ('backend/', '.github/workflows/')
+      lite_mode: true
 
   tests:
      name: Tests
