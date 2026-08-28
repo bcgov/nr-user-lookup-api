@@ -29,9 +29,42 @@ jobs:
       # Get PR number for squash merges to main
       - id: pr
         uses: bcgov/action-get-pr@28b0adf8e4d40720d41f9c87356ce24b0a4bd6af # v0.3.1
+
+  # Long-lived DEV instance, named like TEST/PROD (nr-user-lookup-api-dev), not
+  # by PR number. Deployed on every merge to main, ahead of TEST and PROD, and
+  # never torn down by the PR-close cleanup (which only matches <repo>-<number>).
+  # Runs in lite mode: no HPA/PDB, single replica.
+  deploy-dev:
+    name: DEV Deploys (${{ needs.init.outputs.pr }})
+    needs: [init]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-deploy.yml
+    secrets:
+      oc_namespace: ${{ secrets.oc_namespace }}
+      oc_token: ${{ secrets.oc_token }}
+      bceid_web_service_osid: ${{ secrets.bceid_web_service_osid }}
+      bceid_web_service_requester_user_guid: ${{ secrets.bceid_web_service_requester_user_guid }}
+      bceid_web_service_username: ${{ secrets.bceid_web_service_username }}
+      bceid_web_service_password: ${{ secrets.bceid_web_service_password }}
+      keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
+      keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
+    with:
+      environment: dev
+      target: dev
+      tag: ${{ needs.init.outputs.pr }}
+      lite_mode: true
+
+  tests-dev:
+    name: Tests (DEV)
+    needs: [deploy-dev]
+    uses: ./.github/workflows/reusable-tests.yml
+    with:
+      target: dev
+
   deploy-test:
     name: TEST Deploys (${{ needs.init.outputs.pr }})
-    needs: [init]
+    needs: [init, tests-dev]
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-deploy.yml
@@ -50,7 +83,7 @@ jobs:
       tag: ${{ needs.init.outputs.pr }}
 
   tests:
-    name: Tests
+    name: Tests (TEST)
     needs: [deploy-test]
     uses: ./.github/workflows/reusable-tests.yml
     with:

@@ -20,6 +20,10 @@ on:
         description: Triggers for deployment
         default: ""
         type: string
+      lite_mode:
+        description: Strip HPA + PDB and scale to 1 replica (PR and DEV deploys)
+        default: false
+        type: boolean
 
     secrets:
       oc_namespace:
@@ -101,7 +105,7 @@ jobs:
           oc_token: ${{ secrets.oc_token }}
           debug: true
           # Lite mode strips HPA + PDB and scales to 1 replica for PR/sandbox deploys
-          lite_mode: ${{ github.event_name == 'pull_request' }}
+          lite_mode: ${{ inputs.lite_mode }}
           parameters: -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"
             -p IMAGE_TAG="${{ inputs.tag }}"
