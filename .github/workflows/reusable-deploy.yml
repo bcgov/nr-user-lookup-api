@@ -84,7 +84,7 @@ jobs:
           KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret }}
         run: ./.github/scripts/ensure-keycloak-scopes.sh
 
-      - uses: bcgov/action-deployer-openshift@fc51e6a5849eb0fdb9395ceed9c1059aa25b3815 # v4.1.1
+      - uses: bcgov/action-deployer-openshift@bb9d143f4f03187239580c17c4b77da04cdb6e66 # v4.2.2
         id: deploy
         # The BCeID secrets are handed to the deployer through the environment and
         # referenced below as `$VAR`, NOT interpolated as `${{ secrets.* }}`. The
