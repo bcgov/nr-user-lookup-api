@@ -56,3 +56,12 @@ logging:
     ca.bc.gov.nrs.userlookup: ${APP_LOG_LEVEL:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [${spring.application.name}] [%t] %logger{36}:%L - %m%n%wEx"
+
+user-lookup:
+  security:
+    # Clients granted every scope of this API although their tokens carry none of the
+    # Keycloak client scopes, for realms where those scopes cannot be created (the BC Gov
+    # SSO "standard" realm, where teams own integrations but not the realm). Comma-separated
+    # client ids, matched against the token's azp (or client_id). Empty by default: the
+    # scopes alone decide, as always.
+    trusted-client-ids: ${USER_LOOKUP_TRUSTED_CLIENT_IDS:}
