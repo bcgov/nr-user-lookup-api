@@ -137,6 +137,7 @@ All configuration is via environment variables (see `backend/src/main/resources/
 | `BCEID_WEB_SERVICE_SOAP_ACTION_PREFIX` | SOAPAction prefix; operation name is appended | `http://www.bceid.ca/webservices/Client/V10/BCeIDService/` |
 | `SERVER_PORT` | HTTP port | `8080` |
 | `APP_LOG_LEVEL` | Log level for `ca.bc.gov.nrs.userlookup` | `INFO` |
+| `USER_LOOKUP_TRUSTED_CLIENT_IDS` | Comma-separated client ids (token `azp`, or `client_id`) granted every API scope although their tokens carry none of the Keycloak client scopes. For realms where those scopes cannot be created, such as the BC Gov SSO `standard` realm. Empty: the scopes alone decide. | — |
 
 ## Local development
 
