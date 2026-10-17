@@ -59,6 +59,11 @@ parameters:
   - name: APP_LOG_LEVEL
     description: Application log level
     value: INFO
+  - name: USER_LOOKUP_TRUSTED_CLIENT_IDS
+    description: >-
+      Comma-separated client ids granted every API scope although their tokens carry none of the
+      Keycloak client scopes (for realms where those scopes cannot be created). Empty: scopes decide.
+    value: ""
   - name: RANDOM_EXPRESSION
     description: Random expression to make sure deployments update
     from: "[a-zA-Z0-9]{32}"
@@ -150,6 +155,8 @@ objects:
                       key: bceid-web-service-password
                 - name: APP_LOG_LEVEL
                   value: ${APP_LOG_LEVEL}
+                - name: USER_LOOKUP_TRUSTED_CLIENT_IDS
+                  value: ${USER_LOOKUP_TRUSTED_CLIENT_IDS}
                 - name: RANDOM_EXPRESSION
                   value: ${RANDOM_EXPRESSION}
               ports:

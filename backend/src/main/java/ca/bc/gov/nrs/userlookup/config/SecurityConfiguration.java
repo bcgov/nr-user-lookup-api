@@ -8,6 +8,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import ca.bc.gov.nrs.userlookup.security.TrustedClientAuthoritiesConverter;
+import java.util.List;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 
 /**
  * Web security for the lookup API.
@@ -42,7 +47,8 @@ public class SecurityConfiguration {
   };
 
   @Bean
-  public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+  public SecurityFilterChain filterChain(
+      HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
     http
         .csrf(AbstractHttpConfigurer::disable)
         .cors(Customizer.withDefaults())
@@ -52,7 +58,28 @@ public class SecurityConfiguration {
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(PUBLIC_PATHS).permitAll()
             .anyRequest().authenticated())
-        .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+        .oauth2ResourceServer(oauth2 -> oauth2.jwt(
+            jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
     return http.build();
+  }
+
+  /**
+   * Authorities from a token: its scopes, plus every API scope for the clients named in
+   * {@code user-lookup.security.trusted-client-ids} (empty by default). See
+   * {@link TrustedClientAuthoritiesConverter} for when that list is the right tool.
+   */
+  @Bean
+  public JwtAuthenticationConverter jwtAuthenticationConverter(
+      @Value("${user-lookup.security.trusted-client-ids:}") List<String> trustedClientIds) {
+    TrustedClientAuthoritiesConverter authorities =
+        new TrustedClientAuthoritiesConverter(trustedClientIds);
+    if (authorities.hasTrustedClients()) {
+      LoggerFactory.getLogger(SecurityConfiguration.class).info(
+          "Trusted-client access is on: {} client id(s) receive every API scope regardless of "
+              + "their token's scopes.", trustedClientIds.stream().filter(id -> !id.isBlank()).count());
+    }
+    JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+    converter.setJwtGrantedAuthoritiesConverter(authorities);
+    return converter;
   }
 }
